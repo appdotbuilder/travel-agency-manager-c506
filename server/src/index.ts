@@ -91,6 +91,7 @@ import {
   createDatabaseBackup,
   restoreDatabase
 } from './handlers/database_backup';
+import { seedInitialUsers } from './handlers/seed';
 
 const t = initTRPC.create({
   transformer: superjson,
@@ -308,6 +309,14 @@ const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 async function start() {
+  try {
+    // Seed initial users on startup
+    await seedInitialUsers();
+  } catch (error) {
+    console.error('Failed to seed initial users:', error);
+    // Continue startup even if seeding fails
+  }
+
   const port = process.env['SERVER_PORT'] || 2022;
   const server = createHTTPServer({
     middleware: (req, res, next) => {

@@ -5,15 +5,15 @@ import { db } from '../db';
 import { usersTable } from '../db/schema';
 import { type LoginInput } from '../schema';
 import { login, verifyToken } from '../handlers/auth';
+import { createUser } from '../handlers/users';
 import { eq } from 'drizzle-orm';
 
 // Test user data
-const testUser = {
+const testUserInput = {
   name: 'Test User',
   username: 'testuser',
-  password_hash: 'testpassword123', // In real app, this would be hashed
-  role: 'administrator' as const,
-  is_active: true
+  password: 'testpassword123',
+  role: 'administrator' as const
 };
 
 const testLoginInput: LoginInput = {
@@ -27,10 +27,8 @@ describe('auth handlers', () => {
 
   describe('login', () => {
     beforeEach(async () => {
-      // Create test user
-      await db.insert(usersTable)
-        .values(testUser)
-        .execute();
+      // Create test user with properly hashed password
+      await createUser(testUserInput);
     });
 
     it('should authenticate valid user', async () => {
@@ -78,12 +76,17 @@ describe('auth handlers', () => {
 
     it('should reject inactive user', async () => {
       // Create inactive user
-      await db.insert(usersTable)
-        .values({
-          ...testUser,
-          username: 'inactiveuser',
-          is_active: false
-        })
+      const inactiveUser = await createUser({
+        name: 'Inactive User',
+        username: 'inactiveuser',
+        password: 'testpassword123',
+        role: 'staff'
+      });
+
+      // Deactivate the user
+      await db.update(usersTable)
+        .set({ is_active: false })
+        .where(eq(usersTable.id, inactiveUser.id))
         .execute();
 
       const inactiveInput: LoginInput = {
@@ -101,12 +104,8 @@ describe('auth handlers', () => {
 
     beforeEach(async () => {
       // Create test user and get valid token
-      const users = await db.insert(usersTable)
-        .values(testUser)
-        .returning()
-        .execute();
-      
-      userId = users[0].id;
+      const user = await createUser(testUserInput);
+      userId = user.id;
 
       const loginResult = await login(testLoginInput);
       validToken = loginResult.token;

@@ -62,9 +62,9 @@ export async function login(input: LoginInput): Promise<{ user: User; token: str
       throw new Error('User account is inactive');
     }
 
-    // Verify password (in real implementation, use bcrypt.compare)
-    // For now, we'll do a simple string comparison
-    if (user.password_hash !== input.password) {
+    // Verify password using Bun.password.verify
+    const isPasswordValid = await Bun.password.verify(input.password, user.password_hash);
+    if (!isPasswordValid) {
       throw new Error('Invalid username or password');
     }
 
