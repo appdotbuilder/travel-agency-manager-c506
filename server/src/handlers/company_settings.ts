@@ -1,26 +1,71 @@
 
+import { db } from '../db';
+import { companySettingsTable } from '../db/schema';
 import { type CompanySettings, type UpdateCompanySettingsInput } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export async function getCompanySettings(): Promise<CompanySettings | null> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch company settings from database.
-  // Should return the single company settings record or null if not found.
-  return Promise.resolve(null);
+  try {
+    const results = await db.select()
+      .from(companySettingsTable)
+      .limit(1)
+      .execute();
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    const settings = results[0];
+    return {
+      ...settings,
+      // No numeric fields to convert in company settings
+    };
+  } catch (error) {
+    console.error('Failed to fetch company settings:', error);
+    throw error;
+  }
 }
 
 export async function updateCompanySettings(input: UpdateCompanySettingsInput): Promise<CompanySettings> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to update or create company settings record.
-  // Should update existing record or create new one if none exists.
-  return Promise.resolve({
-    id: 1,
-    company_name: input.company_name,
-    address: input.address,
-    phone: input.phone,
-    email: input.email,
-    tax_number: input.tax_number,
-    logo_url: input.logo_url,
-    created_at: new Date(),
-    updated_at: new Date()
-  });
+  try {
+    // Check if settings already exist
+    const existing = await getCompanySettings();
+
+    if (existing) {
+      // Update existing record
+      const results = await db.update(companySettingsTable)
+        .set({
+          company_name: input.company_name,
+          address: input.address,
+          phone: input.phone,
+          email: input.email,
+          tax_number: input.tax_number,
+          logo_url: input.logo_url,
+          updated_at: new Date()
+        })
+        .where(eq(companySettingsTable.id, existing.id))
+        .returning()
+        .execute();
+
+      return results[0];
+    } else {
+      // Create new record
+      const results = await db.insert(companySettingsTable)
+        .values({
+          company_name: input.company_name,
+          address: input.address,
+          phone: input.phone,
+          email: input.email,
+          tax_number: input.tax_number,
+          logo_url: input.logo_url
+        })
+        .returning()
+        .execute();
+
+      return results[0];
+    }
+  } catch (error) {
+    console.error('Failed to update company settings:', error);
+    throw error;
+  }
 }

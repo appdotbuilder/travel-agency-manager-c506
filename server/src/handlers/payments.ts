@@ -1,27 +1,82 @@
 
-import { type Payment, type CreatePaymentInput } from '../schema';
+import { db } from '../db';
+import { paymentsTable, bookingsTable, currencyExchangeRatesTable } from '../db/schema';
+import { type CreatePaymentInput, type Payment } from '../schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function getPaymentsByBookingId(bookingId: number): Promise<Payment[]> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch all payments for a specific booking.
-  return Promise.resolve([]);
+  try {
+    const results = await db.select()
+      .from(paymentsTable)
+      .where(eq(paymentsTable.booking_id, bookingId))
+      .execute();
+
+    return results.map(payment => ({
+      ...payment,
+      amount: parseFloat(payment.amount),
+      amount_in_sar: parseFloat(payment.amount_in_sar)
+    }));
+  } catch (error) {
+    console.error('Failed to get payments by booking ID:', error);
+    throw error;
+  }
 }
 
 export async function createPayment(input: CreatePaymentInput, userId: number): Promise<Payment> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to create a new payment record.
-  // Should convert amount to SAR using exchange rates and update booking payment status.
-  return Promise.resolve({
-    id: 1,
-    booking_id: input.booking_id,
-    amount: input.amount,
-    currency: input.currency,
-    amount_in_sar: input.amount, // Should be converted based on exchange rate
-    payment_date: new Date(),
-    notes: input.notes,
-    created_by: userId,
-    created_at: new Date()
-  });
+  try {
+    // Verify booking exists
+    const booking = await db.select()
+      .from(bookingsTable)
+      .where(eq(bookingsTable.id, input.booking_id))
+      .execute();
+
+    if (booking.length === 0) {
+      throw new Error('Booking not found');
+    }
+
+    // Convert amount to SAR if needed
+    let amountInSar = input.amount;
+    if (input.currency !== 'SAR') {
+      const exchangeRate = await db.select()
+        .from(currencyExchangeRatesTable)
+        .where(
+          and(
+            eq(currencyExchangeRatesTable.from_currency, input.currency),
+            eq(currencyExchangeRatesTable.to_currency, 'SAR')
+          )
+        )
+        .execute();
+
+      if (exchangeRate.length === 0) {
+        throw new Error(`Exchange rate not found for ${input.currency} to SAR`);
+      }
+
+      amountInSar = input.amount * parseFloat(exchangeRate[0].rate);
+    }
+
+    // Create payment record
+    const result = await db.insert(paymentsTable)
+      .values({
+        booking_id: input.booking_id,
+        amount: input.amount.toString(),
+        currency: input.currency,
+        amount_in_sar: amountInSar.toString(),
+        notes: input.notes,
+        created_by: userId
+      })
+      .returning()
+      .execute();
+
+    const payment = result[0];
+    return {
+      ...payment,
+      amount: parseFloat(payment.amount),
+      amount_in_sar: parseFloat(payment.amount_in_sar)
+    };
+  } catch (error) {
+    console.error('Payment creation failed:', error);
+    throw error;
+  }
 }
 
 export async function generatePaymentReceipt(paymentId: number): Promise<Buffer> {
