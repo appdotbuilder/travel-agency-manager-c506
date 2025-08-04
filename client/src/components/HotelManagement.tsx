@@ -119,7 +119,7 @@ export function HotelManagement() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-SA', {
+    return new Intl.NumberFormat('en-US', { // Changed from 'ar-SA' to 'en-US'
       style: 'currency',
       currency: 'SAR',
       minimumFractionDigits: 2

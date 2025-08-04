@@ -57,7 +57,7 @@ export function BookingDetails({ bookingId }: BookingDetailsProps) {
   }, [loadBookingDetails]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ar-SA', {
+    return new Intl.NumberFormat('en-US', { // Changed from 'ar-SA' to 'en-US' for Western numerals
       style: 'currency',
       currency: 'SAR',
       minimumFractionDigits: 2
@@ -111,6 +111,24 @@ export function BookingDetails({ bookingId }: BookingDetailsProps) {
     setShowPaymentForm(false);
     // Reload booking to get updated payment status
     loadBookingDetails();
+  };
+
+  const handleGenerateReceipt = async (paymentId: number) => {
+    try {
+      const pdfBuffer = await trpc.generatePaymentReceipt.mutate({ paymentId });
+      const blob = new Blob([pdfBuffer], { type: 'text/plain' }); // Changed to text/plain
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `receipt-${paymentId}.txt`; // Changed to .txt
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to generate receipt:', err);
+      setError('Failed to generate receipt.');
+    }
   };
 
   if (isLoading) {
@@ -337,6 +355,13 @@ export function BookingDetails({ bookingId }: BookingDetailsProps) {
                         <p className="text-sm text-gray-600 mt-1">{payment.notes}</p>
                       )}
                     </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleGenerateReceipt(payment.id)}
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
                   </div>
                 ))}
               </div>

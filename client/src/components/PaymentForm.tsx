@@ -82,7 +82,7 @@ export function PaymentForm({ bookingId, onPaymentAdded, onCancel }: PaymentForm
 
   const formatCurrency = (amount: number, currency: Currency) => {
     const currencyCode = currency === 'SAR' ? 'SAR' : currency === 'USD' ? 'USD' : 'IDR';
-    return new Intl.NumberFormat(currency === 'SAR' ? 'ar-SA' : 'en-US', {
+    return new Intl.NumberFormat('en-US', { // Changed for all cases to 'en-US' for Western numerals
       style: 'currency',
       currency: currencyCode,
       minimumFractionDigits: currency === 'IDR' ? 0 : 2

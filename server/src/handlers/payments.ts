@@ -1,6 +1,6 @@
 
 import { db } from '../db';
-import { paymentsTable, bookingsTable, currencyExchangeRatesTable } from '../db/schema';
+import { paymentsTable, bookingsTable, currencyExchangeRatesTable, customersTable, usersTable, companySettingsTable } from '../db/schema';
 import { type CreatePaymentInput, type Payment } from '../schema';
 import { eq, and } from 'drizzle-orm';
 
@@ -80,7 +80,69 @@ export async function createPayment(input: CreatePaymentInput, userId: number): 
 }
 
 export async function generatePaymentReceipt(paymentId: number): Promise<Buffer> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to generate PDF receipt for a payment.
-  return Promise.resolve(Buffer.from('PDF receipt placeholder'));
+  try {
+    // Fetch payment with joins to get related data
+    const paymentResults = await db.select({
+      payment: paymentsTable,
+      booking: bookingsTable,
+      customer: customersTable,
+      createdBy: usersTable
+    })
+    .from(paymentsTable)
+    .innerJoin(bookingsTable, eq(paymentsTable.booking_id, bookingsTable.id))
+    .innerJoin(customersTable, eq(bookingsTable.customer_id, customersTable.id))
+    .innerJoin(usersTable, eq(paymentsTable.created_by, usersTable.id))
+    .where(eq(paymentsTable.id, paymentId))
+    .execute();
+
+    if (paymentResults.length === 0) {
+      throw new Error('Payment not found');
+    }
+
+    const paymentData = paymentResults[0];
+    const { payment, booking, customer, createdBy } = paymentData;
+
+    // Get company settings
+    const companyResults = await db.select()
+      .from(companySettingsTable)
+      .execute();
+    
+    const companySettings = companyResults[0];
+
+    let receiptContent = `
+********************************************************************************
+                          PAYMENT RECEIPT - ${companySettings?.company_name || 'Travel Agency'}
+********************************************************************************
+Receipt ID: ${paymentId}
+Date: ${payment.payment_date.toLocaleDateString('en-US')}
+Recorded By: ${createdBy.name} (${createdBy.role})
+
+Customer Details:
+-----------------
+Name: ${customer.name}
+Email: ${customer.email}
+Phone: ${customer.phone}
+
+Payment Details:
+----------------
+Booking Number: ${booking.booking_number}
+Amount Paid:    ${payment.currency} ${parseFloat(payment.amount).toFixed(2)}
+Amount in SAR:  SAR ${parseFloat(payment.amount_in_sar).toFixed(2)}
+Notes:          ${payment.notes || 'N/A'}
+
+Company Information:
+--------------------
+Name: ${companySettings?.company_name || 'N/A'}
+Address: ${companySettings?.address || 'N/A'}
+Phone: ${companySettings?.phone || 'N/A'}
+Email: ${companySettings?.email || 'N/A'}
+Tax Number: ${companySettings?.tax_number || 'N/A'}
+********************************************************************************
+`;
+
+    return Buffer.from(receiptContent, 'utf-8');
+  } catch (error) {
+    console.error('Generate payment receipt failed:', error);
+    throw error;
+  }
 }

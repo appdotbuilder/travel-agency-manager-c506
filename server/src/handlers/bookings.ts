@@ -7,7 +7,8 @@ import {
   hotelsTable, 
   servicesTable,
   hotelBookingDetailsTable,
-  serviceBookingDetailsTable
+  serviceBookingDetailsTable,
+  companySettingsTable
 } from '../db/schema';
 import { type Booking, type CreateBookingInput, type HotelBookingDetail, type ServiceBookingDetail } from '../schema';
 import { eq } from 'drizzle-orm';
@@ -284,18 +285,120 @@ export async function updateBookingStatus(id: number, status: 'draft' | 'confirm
 
 export async function generateBookingInvoice(id: number): Promise<Buffer> {
   try {
-    // Verify booking exists
-    const bookingResults = await db.select()
-      .from(bookingsTable)
-      .where(eq(bookingsTable.id, id))
-      .execute();
+    // Fetch booking with customer and created by user
+    const bookingResults = await db.select({
+      booking: bookingsTable,
+      customer: customersTable,
+      createdBy: usersTable
+    })
+    .from(bookingsTable)
+    .innerJoin(customersTable, eq(bookingsTable.customer_id, customersTable.id))
+    .innerJoin(usersTable, eq(bookingsTable.created_by, usersTable.id))
+    .where(eq(bookingsTable.id, id))
+    .execute();
 
     if (bookingResults.length === 0) {
       throw new Error('Booking not found');
     }
 
-    // Generate a simple PDF placeholder
-    const invoiceContent = `Invoice for Booking ID: ${id}`;
+    const bookingData = bookingResults[0];
+    const { booking, customer, createdBy } = bookingData;
+
+    // Get hotel booking details with hotel information
+    const hotelBookingResults = await db.select({
+      hotelDetail: hotelBookingDetailsTable,
+      hotel: hotelsTable
+    })
+    .from(hotelBookingDetailsTable)
+    .innerJoin(hotelsTable, eq(hotelBookingDetailsTable.hotel_id, hotelsTable.id))
+    .where(eq(hotelBookingDetailsTable.booking_id, id))
+    .execute();
+
+    // Get service booking details with service information
+    const serviceBookingResults = await db.select({
+      serviceDetail: serviceBookingDetailsTable,
+      service: servicesTable
+    })
+    .from(serviceBookingDetailsTable)
+    .innerJoin(servicesTable, eq(serviceBookingDetailsTable.service_id, servicesTable.id))
+    .where(eq(serviceBookingDetailsTable.booking_id, id))
+    .execute();
+
+    // Get company settings
+    const companyResults = await db.select()
+      .from(companySettingsTable)
+      .execute();
+    
+    const companySettings = companyResults[0];
+
+    let invoiceContent = `
+********************************************************************************
+                          INVOICE - ${companySettings?.company_name || 'Travel Agency'}
+********************************************************************************
+Invoice Number: ${booking.booking_number}
+Date: ${booking.created_at.toLocaleDateString('en-US')}
+Created By: ${createdBy.name} (${createdBy.role})
+
+Customer Details:
+-----------------
+Name: ${customer.name}
+Email: ${customer.email}
+Phone: ${customer.phone}
+Address: ${customer.address}
+
+Booking Summary:
+----------------
+Total Selling Price: SAR ${parseFloat(booking.total_selling_price).toFixed(2)}
+Total Cost Price:    SAR ${parseFloat(booking.total_cost_price).toFixed(2)}
+Profit:              SAR ${(parseFloat(booking.total_selling_price) - parseFloat(booking.total_cost_price)).toFixed(2)}
+
+Hotel Bookings:
+---------------
+`;
+
+    if (hotelBookingResults.length > 0) {
+      hotelBookingResults.forEach((result, index) => {
+        const { hotelDetail, hotel } = result;
+        invoiceContent += `
+  Hotel #${index + 1}: ${hotel.name}
+    Location:          ${hotel.location}
+    Room Type:         ${hotelDetail.room_type}
+    Meal Plan:         ${hotelDetail.meal_plan}
+    Check-in Date:     ${new Date(hotelDetail.check_in_date).toLocaleDateString('en-US')}
+    Check-out Date:    ${new Date(hotelDetail.check_out_date).toLocaleDateString('en-US')}
+    Number of Rooms:   ${hotelDetail.number_of_rooms}
+    Selling Price:     SAR ${parseFloat(hotelDetail.selling_price).toFixed(2)}
+`;
+      });
+    } else {
+      invoiceContent += '  No hotel bookings.\n';
+    }
+
+    invoiceContent += `
+Additional Services:
+--------------------
+`;
+    if (serviceBookingResults.length > 0) {
+      serviceBookingResults.forEach((result, index) => {
+        const { serviceDetail, service } = result;
+        invoiceContent += `
+  Service #${index + 1}: ${service.name}
+    Quantity:          ${serviceDetail.quantity}
+    Selling Price:     SAR ${parseFloat(serviceDetail.selling_price).toFixed(2)}
+`;
+      });
+    } else {
+      invoiceContent += '  No additional services.\n';
+    }
+
+    invoiceContent += `
+********************************************************************************
+Thank you for your business!
+${companySettings?.address || ''} | ${companySettings?.phone || ''} | ${companySettings?.email || ''}
+Tax Number: ${companySettings?.tax_number || 'N/A'}
+********************************************************************************
+`;
+
     return Buffer.from(invoiceContent, 'utf-8');
   } catch (error) {
     console.error('Generate booking invoice failed:', error);

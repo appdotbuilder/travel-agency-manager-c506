@@ -91,6 +91,24 @@ export function BookingManagement() {
     setShowCreateForm(false);
   };
 
+  const handleGenerateInvoice = async (bookingId: number) => {
+    try {
+      const pdfBuffer = await trpc.generateBookingInvoice.mutate({ id: bookingId });
+      const blob = new Blob([pdfBuffer], { type: 'text/plain' }); // Changed to text/plain
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${bookingId}.txt`; // Changed to .txt
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to generate invoice:', err);
+      setError('Failed to generate invoice.');
+    }
+  };
+
   if (showCreateForm) {
     return (
       <div className="space-y-6">
@@ -271,10 +289,7 @@ export function BookingManagement() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          // TODO: Generate invoice
-                          console.log('Generate invoice for booking:', booking.id);
-                        }}
+                        onClick={() => handleGenerateInvoice(booking.id)}
                       >
                         <FileText className="h-4 w-4" />
                       </Button>

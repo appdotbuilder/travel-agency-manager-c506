@@ -270,7 +270,10 @@ describe('bookings handlers', () => {
       const result = await generateBookingInvoice(bookingId);
 
       expect(result).toBeInstanceOf(Buffer);
-      expect(result.toString()).toContain(`Invoice for Booking ID: ${bookingId}`);
+      expect(result.toString()).toContain('INVOICE - Travel Agency');
+      expect(result.toString()).toContain('BK123');
+      expect(result.toString()).toContain('Test Customer');
+      expect(result.toString()).toContain('SAR 120.00');
     });
 
     it('should throw error when booking does not exist', async () => {
